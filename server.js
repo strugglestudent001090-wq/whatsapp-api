@@ -16,7 +16,8 @@ async function connectToWhatsApp() {
     sock = makeWASocket({
         auth: state,
         printQRInTerminal: true,
-        logger: pino({ level: "silent" }) // Faltu logs band karne ke liye
+        logger: pino({ level: "silent" }),
+        browser: ["Ubuntu", "Chrome", "20.0.04"] // 👉 FIX: WhatsApp ko asli browser ki pehchaan dena
     });
 
     sock.ev.on('connection.update', (update) => {
@@ -30,8 +31,8 @@ async function connectToWhatsApp() {
         
         if (connection === 'close') {
             isConnected = false;
-            console.log("Connection closed. Reconnecting...");
-            connectToWhatsApp(); // Crash hone par apne aap restart hoga
+            console.log("Connection closed. Reconnecting in 3 seconds...");
+            setTimeout(connectToWhatsApp, 3000); // 👉 FIX: Loop ko control karne ke liye
         } else if (connection === 'open') {
             isConnected = true;
             qrCodeData = "";
