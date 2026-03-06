@@ -8,19 +8,27 @@ app.use(express.json());
 let qrCodeData = "";
 let isReady = false;
 
-// WhatsApp Client Setup (Render Server Friendly)
 const client = new Client({
     authStrategy: new LocalAuth(),
     puppeteer: { 
         executablePath: '/usr/bin/chromium',
-        args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'] 
+        args: [
+            '--no-sandbox', 
+            '--disable-setuid-sandbox', 
+            '--disable-dev-shm-usage',
+            '--disable-accelerated-2d-canvas',
+            '--no-first-run',
+            '--no-zygote',
+            '--single-process', // RAM bachane ke liye sabse zaroori
+            '--disable-gpu'
+        ] 
     }
 });
 
 client.on('qr', (qr) => {
-    console.log("QR Code Ready!");
     qrCodeData = qr;
     isReady = false;
+    console.log("QR Code Ready! Scan now.");
 });
 
 client.on('ready', () => {
@@ -29,36 +37,27 @@ client.on('ready', () => {
     console.log('✅ WhatsApp Engine is Ready!');
 });
 
+client.on('auth_failure', () => { console.error('Authentication failure, restarting...'); });
+client.on('disconnected', () => { isReady = false; console.log('Client disconnected!'); });
+
 client.initialize();
 
-// Webpage to Scan QR
 app.get('/', async (req, res) => {
-    if (isReady) {
-        res.send("<h1 style='color:green; text-align:center; margin-top:50px;'>✅ API IS LIVE & CONNECTED!</h1><p style='text-align:center;'>Your WhatsApp is now ready to send automated messages.</p>");
-    } else if (qrCodeData) {
+    if (isReady) return res.send("<h1>✅ Connected!</h1>");
+    if (qrCodeData) {
         const qrImage = await qrcode.toDataURL(qrCodeData);
-        res.send(`<div style="text-align:center; margin-top:50px; font-family:sans-serif;"><h1>Scan this QR with WhatsApp</h1><img src="${qrImage}" style="width:300px; height:300px; border:2px solid black; border-radius:10px;"><p>Open WhatsApp > Linked Devices > Link a Device</p></div>`);
-    } else {
-        res.send("<h1 style='text-align:center; margin-top:50px; font-family:sans-serif;'>⏳ Starting Engine... Refresh this page in 10-20 seconds.</h1>");
+        return res.send(`<img src="${qrImage}" style="width:300px;">`);
     }
+    res.send("<h1>Starting Engine... Refresh in 10s</h1>");
 });
 
-// Endpoint for PHP site to trigger messages
 app.post('/send-message', async (req, res) => {
-    if (!isReady) return res.status(400).send({error: "WhatsApp not connected. Scan QR first."});
-    
+    if (!isReady) return res.status(400).send({error: "Scan QR first"});
     const { number, message } = req.body;
-    const chatId = number + "@c.us"; 
-    
     try {
-        await client.sendMessage(chatId, message);
-        res.send({ success: true, msg: "Message sent successfully!" });
-    } catch (e) {
-        res.status(500).send({ success: false, error: e.message });
-    }
+        await client.sendMessage(number + "@c.us", message);
+        res.send({ success: true });
+    } catch (e) { res.status(500).send({ error: e.message }); }
 });
 
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-    console.log("Server running on port " + PORT);
-});
+app.listen(process.env.PORT || 3000);
