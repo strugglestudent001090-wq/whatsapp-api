@@ -1,7 +1,8 @@
 const express = require('express');
-const { makeWASocket, useMultiFileAuthState } = require('@whiskeysockets/baileys');
+const { makeWASocket, useMultiFileAuthState, DisconnectReason } = require('@whiskeysockets/baileys');
 const qrcode = require('qrcode');
 const pino = require('pino');
+const fs = require('fs');
 
 const app = express();
 app.use(express.json());
@@ -16,12 +17,12 @@ async function connectToWhatsApp() {
     sock = makeWASocket({
         auth: state,
         printQRInTerminal: true,
-        logger: pino({ level: "silent" }),
-        browser: ["Ubuntu", "Chrome", "20.0.04"] // 👉 FIX: WhatsApp ko asli browser ki pehchaan dena
+        browser: ["Mac OS", "Chrome", "10.15.7"], // Ekdum asli browser ka naam
+        logger: pino({ level: "silent" })
     });
 
     sock.ev.on('connection.update', (update) => {
-        const { connection, qr } = update;
+        const { connection, lastDisconnect, qr } = update;
         
         if (qr) {
             qrCodeData = qr;
@@ -31,8 +32,16 @@ async function connectToWhatsApp() {
         
         if (connection === 'close') {
             isConnected = false;
+            const statusCode = lastDisconnect?.error?.output?.statusCode;
+            
+            // 👉 FIX: Agar file corrupt hai, toh delete karke fresh start karo
+            if (statusCode === DisconnectReason.loggedOut || statusCode === 401) {
+                console.log("Session kharab hai. Purana data delete kar rahe hain...");
+                try { fs.rmSync('auth_info_baileys', { recursive: true, force: true }); } catch(e){}
+            }
+            
             console.log("Connection closed. Reconnecting in 3 seconds...");
-            setTimeout(connectToWhatsApp, 3000); // 👉 FIX: Loop ko control karne ke liye
+            setTimeout(connectToWhatsApp, 3000);
         } else if (connection === 'open') {
             isConnected = true;
             qrCodeData = "";
